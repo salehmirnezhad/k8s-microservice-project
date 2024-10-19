@@ -1,0 +1,92 @@
+بسیار خوب، یک سناریوی پیچیده‌تر برای استفاده از Kind می‌تواند شامل ایجاد یک کلاستر چند نودی با پیکربندی شبکه سفارشی و استقرار یک برنامه microservice باشد. این سناریو شامل موارد زیر است:
+
+1. ایجاد یک کلاستر Kind با سه نود (یک کنترل پلن و دو نود کارگر)
+2. پیکربندی شبکه سفارشی با استفاده از Calico
+3. نصب و پیکربندی Ingress-Nginx
+4. استقرار یک برنامه microservice شامل سه سرویس: frontend، backend و database
+5. پیکربندی افقی Pod Autoscaler (HPA) برای frontend و backend
+6. ایجاد یک Ingress برای دسترسی به frontend
+
+مراحل اجرا:
+
+1. ایجاد فایل پیکربندی Kind:
+   ```yaml
+   kind: Cluster
+   apiVersion: kind.x-k8s.io/v1alpha4
+   nodes:
+   - role: control-plane
+     kubeadmConfigPatches:
+     - |
+       kind: InitConfiguration
+       nodeRegistration:
+         kubeletExtraArgs:
+           node-labels: "ingress-ready=true"
+     extraPortMappings:
+     - containerPort: 80
+       hostPort: 80
+       protocol: TCP
+     - containerPort: 443
+       hostPort: 443
+       protocol: TCP
+   - role: worker
+   - role: worker
+   networking:
+     disableDefaultCNI: true
+     podSubnet: 192.168.0.0/16
+   ```
+
+2. ایجاد کلاستر:
+   ```
+   kind create cluster --config kind-config.yaml --name multi-node-cluster
+   ```
+
+3. نصب Calico:
+   ```
+   kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+   ```
+
+4. نصب Ingress-Nginx:
+   ```
+   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/provider/kind/deploy.yaml
+   ```
+
+5. ایجاد و استقرار برنامه microservice:
+   - ایجاد Deployment برای frontend، backend و database
+   - ایجاد Service برای هر کدام
+   - پیکربندی HPA برای frontend و backend
+
+6. پیکربندی Ingress:
+   ```yaml
+   apiVersion: networking.k8s.io/v1
+   kind: Ingress
+   metadata:
+     name: microservice-ingress
+     annotations:
+       kubernetes.io/ingress.class: nginx
+   spec:
+     rules:
+     - host: microservice.local
+       http:
+         paths:
+         - path: /
+           pathType: Prefix
+           backend:
+             service:
+               name: frontend-service
+               port: 
+                 number: 80
+   ```
+
+7. تست برنامه:
+   - اضافه کردن `microservice.local` به فایل `/etc/hosts`
+   - دسترسی به برنامه از طریق مرورگر: `http://microservice.local`
+
+8. تست autoscaling:
+   ```
+   kubectl run -i --tty load-generator --rm --image=busybox --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://frontend-service; done"
+   ```
+
+این سناریو شامل جنبه‌های پیچیده‌تر مدیریت کلاستر Kubernetes است، از جمله شبکه‌بندی سفارشی، مدیریت ترافیک ورودی، و مقیاس‌پذیری خودکار. این تمرین به شما کمک می‌کند تا درک عمیق‌تری از قابلیت‌های Kind و Kubernetes به دست آورید.
+
+Citations:
+[1] https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/16551371/2dbf509d-68bb-4d60-8e58-91f9ca30c018/paste.txt
